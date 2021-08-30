@@ -31,7 +31,13 @@ public class SecureStorage extends CordovaPlugin {
     private String INIT_PACKAGENAME;
     private volatile CallbackContext initContext, secureDeviceContext;
     private volatile boolean initContextRunning = false;
-    private volatile boolean ignoreSecureStore = false;
+    private boolean ignoreSecureStore;
+
+    @Override
+    protected void pluginInitialize() {
+        super.pluginInitialize();
+        ignoreSecureStore = preferences.getBoolean("ignoreSecureStore", false);
+    }
 
     @Override
     public void onResume(boolean multitasking) {
