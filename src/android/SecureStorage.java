@@ -31,6 +31,7 @@ public class SecureStorage extends CordovaPlugin {
     private String INIT_PACKAGENAME;
     private volatile CallbackContext initContext, secureDeviceContext;
     private volatile boolean initContextRunning = false;
+    private volatile boolean ignoreSecureStore = false;
 
     @Override
     public void onResume(boolean multitasking) {
@@ -49,7 +50,7 @@ public class SecureStorage extends CordovaPlugin {
                     initContextRunning = true;
                     try {
                         String alias = service2alias(INIT_SERVICE);
-                        if (!RSA.isEntryAvailable(alias)) {
+                        if (!rsaEntryAvailable(alias)) {
                             //Solves Issue #96. The RSA key may have been deleted by changing the lock type.
                             getStorage(INIT_SERVICE).clear();
                             RSA.createKeyPair(getContext(), alias);
@@ -102,7 +103,7 @@ public class SecureStorage extends CordovaPlugin {
             if (!isDeviceSecure()) {
                 Log.e(TAG, MSG_DEVICE_NOT_SECURE);
                 callbackContext.error(MSG_DEVICE_NOT_SECURE);
-            } else if (!RSA.isEntryAvailable(alias)) {
+            } else if (!rsaEntryAvailable(alias)) {
                 initContext = callbackContext;
                 unlockCredentials();
             } else {
@@ -115,21 +116,26 @@ public class SecureStorage extends CordovaPlugin {
             final String key = args.getString(1);
             final String value = args.getString(2);
             final String adata = service;
-            cordova.getThreadPool().execute(new Runnable() {
-                public void run() {
-                    try {
-                        JSONObject result = AES.encrypt(value.getBytes(), adata.getBytes());
-                        byte[] aes_key = Base64.decode(result.getString("key"), Base64.DEFAULT);
-                        byte[] aes_key_enc = RSA.encrypt(aes_key, service2alias(service));
-                        result.put("key", Base64.encodeToString(aes_key_enc, Base64.DEFAULT));
-                        getStorage(service).store(key, result.toString());
-                        callbackContext.success(key);
-                    } catch (Exception e) {
-                        Log.e(TAG, "Encrypt failed :", e);
-                        callbackContext.error(e.getMessage());
+            if (ignoreSecureStore) {
+                getStorage(service).store(key, value);
+                callbackContext.success(key);
+            } else {
+                cordova.getThreadPool().execute(new Runnable() {
+                    public void run() {
+                        try {
+                            JSONObject result = AES.encrypt(value.getBytes(), adata.getBytes());
+                            byte[] aes_key = Base64.decode(result.getString("key"), Base64.DEFAULT);
+                            byte[] aes_key_enc = RSA.encrypt(aes_key, service2alias(service));
+                            result.put("key", Base64.encodeToString(aes_key_enc, Base64.DEFAULT));
+                            getStorage(service).store(key, result.toString());
+                            callbackContext.success(key);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Encrypt failed :", e);
+                            callbackContext.error(e.getMessage());
+                        }
                     }
-                }
-            });
+                });
+            }
             return true;
         }
         if ("get".equals(action)) {
@@ -137,24 +143,28 @@ public class SecureStorage extends CordovaPlugin {
             final String key = args.getString(1);
             String value = getStorage(service).fetch(key);
             if (value != null) {
-                JSONObject json = new JSONObject(value);
-                final byte[] encKey = Base64.decode(json.getString("key"), Base64.DEFAULT);
-                JSONObject data = json.getJSONObject("value");
-                final byte[] ct = Base64.decode(data.getString("ct"), Base64.DEFAULT);
-                final byte[] iv = Base64.decode(data.getString("iv"), Base64.DEFAULT);
-                final byte[] adata = Base64.decode(data.getString("adata"), Base64.DEFAULT);
-                cordova.getThreadPool().execute(new Runnable() {
-                    public void run() {
-                        try {
-                            byte[] decryptedKey = RSA.decrypt(encKey, service2alias(service));
-                            String decrypted = new String(AES.decrypt(ct, decryptedKey, iv, adata));
-                            callbackContext.success(decrypted);
-                        } catch (Exception e) {
-                            Log.e(TAG, "Decrypt failed :", e);
-                            callbackContext.error(e.getMessage());
+                if (ignoreSecureStore) {
+                    callbackContext.success(value);
+                } else {
+                    JSONObject json = new JSONObject(value);
+                    final byte[] encKey = Base64.decode(json.getString("key"), Base64.DEFAULT);
+                    JSONObject data = json.getJSONObject("value");
+                    final byte[] ct = Base64.decode(data.getString("ct"), Base64.DEFAULT);
+                    final byte[] iv = Base64.decode(data.getString("iv"), Base64.DEFAULT);
+                    final byte[] adata = Base64.decode(data.getString("adata"), Base64.DEFAULT);
+                    cordova.getThreadPool().execute(new Runnable() {
+                        public void run() {
+                            try {
+                                byte[] decryptedKey = RSA.decrypt(encKey, service2alias(service));
+                                String decrypted = new String(AES.decrypt(ct, decryptedKey, iv, adata));
+                                callbackContext.success(decrypted);
+                            } catch (Exception e) {
+                                Log.e(TAG, "Decrypt failed :", e);
+                                callbackContext.error(e.getMessage());
+                            }
                         }
-                    }
-                });
+                    });
+                }
             } else {
                 callbackContext.error("Key [" + key + "] not found.");
             }
@@ -191,9 +201,9 @@ public class SecureStorage extends CordovaPlugin {
         try {
             Method isSecure = null;
             isSecure = keyguardManager.getClass().getMethod("isDeviceSecure");
-            return ((Boolean) isSecure.invoke(keyguardManager)).booleanValue();
+            return ((Boolean) isSecure.invoke(keyguardManager)).booleanValue() || ignoreSecureStore;
         } catch (Exception e) {
-            return keyguardManager.isKeyguardSecure();
+            return keyguardManager.isKeyguardSecure() || ignoreSecureStore;
         }
     }
 
@@ -238,6 +248,10 @@ public class SecureStorage extends CordovaPlugin {
 
     private void startActivity(Intent intent) {
         cordova.getActivity().startActivity(intent);
+    }
+
+    private boolean rsaEntryAvailable(String alias) {
+        return RSA.isEntryAvailable(alias) || ignoreSecureStore;
     }
 
 }
