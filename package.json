@@ -36,7 +36,7 @@
   "main": "www/securestorage.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/crypho/cordova-plugin-secure-storage.git"
+    "url": "git+https://github.com/ziyingjing/cordova-plugin-secure-storage.git"
   },
   "scripts": {
     "eslint": "./node_modules/.bin/eslint www/securestorage.js tests/tests.js"
@@ -47,7 +47,7 @@
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/crypho/cordova-plugin-secure-storage/issues"
+    "url": "https://github.com/ziyingjing/cordova-plugin-secure-storage/issues"
   },
-  "homepage": "https://github.com/crypho/cordova-plugin-secure-storage#readme"
+  "homepage": "https://github.com/ziyingjing/cordova-plugin-secure-storage#readme"
 }
