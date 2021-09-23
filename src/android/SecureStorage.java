@@ -32,11 +32,13 @@ public class SecureStorage extends CordovaPlugin {
     private volatile CallbackContext initContext, secureDeviceContext;
     private volatile boolean initContextRunning = false;
     private boolean ignoreSecureStore;
+    private int seed;
 
     @Override
     protected void pluginInitialize() {
         super.pluginInitialize();
         ignoreSecureStore = preferences.getBoolean("ignoreSecureStore", false);
+        seed = preferences.getInteger("encrySeed", 0);
     }
 
     @Override
@@ -123,7 +125,8 @@ public class SecureStorage extends CordovaPlugin {
             final String value = args.getString(2);
             final String adata = service;
             if (ignoreSecureStore) {
-                getStorage(service).store(key, value);
+                String result = EncryptTool.encrypt(seed, value);
+                getStorage(service).store(key, result);
                 callbackContext.success(key);
             } else {
                 cordova.getThreadPool().execute(new Runnable() {
@@ -150,7 +153,8 @@ public class SecureStorage extends CordovaPlugin {
             String value = getStorage(service).fetch(key);
             if (value != null) {
                 if (ignoreSecureStore) {
-                    callbackContext.success(value);
+                    String result = EncryptTool.decryption(seed, value);
+                    callbackContext.success(result);
                 } else {
                     JSONObject json = new JSONObject(value);
                     final byte[] encKey = Base64.decode(json.getString("key"), Base64.DEFAULT);
